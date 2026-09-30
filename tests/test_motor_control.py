@@ -77,7 +77,7 @@ class FaceMotorControllerTests(unittest.TestCase):
 
     def test_returns_to_neutral_once_after_full_tracker_reset(self):
         self.controller.update("LOCKED", (0, 0, 0, 0), 640, now=0.0)
-        centered = self.controller.update("SEARCHING", None, 640, now=1.0)
+        centered = self.controller.update("SEARCHING", None, 640, now=0.01)
         repeated = self.controller.update("SEARCHING", None, 640, now=2.0)
 
         self.assertEqual(centered.angle, 90)

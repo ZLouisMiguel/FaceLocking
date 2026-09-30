@@ -212,9 +212,10 @@ class FaceMotorController:
             available=self.available,
         )
 
-    def _publish_if_due(self, angle, now):
+    def _publish_if_due(self, angle, now, force=False):
         if (
-            self._last_publish_at is not None
+            not force
+            and self._last_publish_at is not None
             and now - self._last_publish_at < self.publish_interval
         ):
             return False
@@ -278,7 +279,7 @@ class FaceMotorController:
             self._last_state = SEARCHING
             self._smoothed_x = 0.5
             if just_reset:
-                published = self._publish_if_due(self.neutral, now)
+                published = self._publish_if_due(self.neutral, now, force=True)
                 self._last_angle = self.neutral
                 self._had_active_target = False
                 return self._command(self.neutral, published)
