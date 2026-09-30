@@ -1,6 +1,12 @@
 import cv2
 
 
+def format_motor_status(command):
+    """Return the compact motor status string used by the camera overlay."""
+    connection = "ONLINE" if command.available else "OFFLINE"
+    return f"MOTOR: {command.direction} {command.angle} deg [{connection}]"
+
+
 class OutputSignalManager:
     SEARCHING = "SEARCHING"
     LOCKED = "LOCKED"

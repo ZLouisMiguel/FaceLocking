@@ -59,6 +59,104 @@ class MotorCommand:
     available: bool = True
 
 
+def _default_mqtt_client_factory(client_id):
+    import paho.mqtt.client as mqtt
+
+    return mqtt.Client(client_id=client_id, protocol=mqtt.MQTTv311)
+
+
+class MqttAnglePublisher:
+    """Publish absolute angle commands without coupling recognition to MQTT."""
+
+    def __init__(
+        self,
+        broker="broker.emqx.io",
+        port=1883,
+        topic="face/servo/angle",
+        client_id="face-recognition-motor",
+        keepalive=60,
+        client_factory=None,
+    ):
+        self.broker = broker
+        self.port = int(port)
+        self.topic = topic
+        self.client_id = client_id
+        self.keepalive = int(keepalive)
+        self.client_factory = client_factory or _default_mqtt_client_factory
+        self._client = None
+        self.online = False
+
+    def _drop_client(self):
+        client = self._client
+        self._client = None
+        self.online = False
+        if client is None:
+            return
+        try:
+            client.loop_stop()
+        except Exception:
+            pass
+        try:
+            client.disconnect()
+        except Exception:
+            pass
+
+    def _connect(self):
+        if self.online and self._client is not None:
+            return True
+
+        try:
+            client = self.client_factory(self.client_id)
+            result = client.connect(self.broker, self.port, self.keepalive)
+            if result not in (None, 0):
+                raise OSError(f"MQTT connect returned {result}")
+            client.loop_start()
+            self._client = client
+            self.online = True
+            return True
+        except Exception:
+            self._drop_client()
+            return False
+
+    def publish_angle(self, angle):
+        try:
+            numeric_angle = float(angle)
+        except (TypeError, ValueError):
+            return False
+        if not math.isfinite(numeric_angle):
+            return False
+        if not self._connect():
+            return False
+
+        payload = (
+            str(int(numeric_angle))
+            if numeric_angle.is_integer()
+            else str(numeric_angle)
+        )
+        try:
+            result = self._client.publish(self.topic, payload, qos=0, retain=False)
+            rc = getattr(result, "rc", 0)
+            if rc not in (None, 0):
+                raise OSError(f"MQTT publish returned {rc}")
+            return True
+        except Exception:
+            self._drop_client()
+            return False
+
+    def close(self):
+        self._drop_client()
+
+
+class DisabledMotorPublisher:
+    online = False
+
+    def publish_angle(self, _angle):
+        return False
+
+    def close(self):
+        return None
+
+
 class FaceMotorController:
     """Convert tracker output into smoothed, throttled motor commands."""
 
@@ -94,7 +192,7 @@ class FaceMotorController:
         self._last_state = SEARCHING
         self._last_publish_at = None
         self._had_active_target = False
-        self.available = True
+        self.available = bool(getattr(publisher, "online", True))
 
     def _command(self, angle, published=False):
         return MotorCommand(
