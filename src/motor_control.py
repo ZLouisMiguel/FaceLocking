@@ -75,16 +75,21 @@ class MqttAnglePublisher:
         topic="face/servo/angle",
         client_id="face-recognition-motor",
         keepalive=60,
+        reconnect_interval=3.0,
         client_factory=None,
+        clock=time.monotonic,
     ):
         self.broker = broker
         self.port = int(port)
         self.topic = topic
         self.client_id = client_id
         self.keepalive = int(keepalive)
+        self.reconnect_interval = float(reconnect_interval)
         self.client_factory = client_factory or _default_mqtt_client_factory
+        self.clock = clock
         self._client = None
         self.online = False
+        self._next_retry_at = 0.0
 
     def _drop_client(self):
         client = self._client
@@ -104,6 +109,8 @@ class MqttAnglePublisher:
     def _connect(self):
         if self.online and self._client is not None:
             return True
+        if self.clock() < self._next_retry_at:
+            return False
 
         try:
             client = self.client_factory(self.client_id)
@@ -113,9 +120,11 @@ class MqttAnglePublisher:
             client.loop_start()
             self._client = client
             self.online = True
+            self._next_retry_at = 0.0
             return True
         except Exception:
             self._drop_client()
+            self._next_retry_at = self.clock() + self.reconnect_interval
             return False
 
     def publish_angle(self, angle):
@@ -141,6 +150,7 @@ class MqttAnglePublisher:
             return True
         except Exception:
             self._drop_client()
+            self._next_retry_at = self.clock() + self.reconnect_interval
             return False
 
     def close(self):

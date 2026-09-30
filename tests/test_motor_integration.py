@@ -87,6 +87,28 @@ class MqttPublisherTests(unittest.TestCase):
         self.assertFalse(publisher.publish_angle(90))
         self.assertFalse(publisher.online)
 
+    def test_broker_failure_is_retried_after_cooldown(self):
+        attempts = []
+        current_time = [0.0]
+
+        def factory(client_id):
+            attempts.append(client_id)
+            return FailingMqttClient(client_id)
+
+        publisher = MqttAnglePublisher(
+            client_factory=factory,
+            reconnect_interval=5.0,
+            clock=lambda: current_time[0],
+        )
+
+        self.assertFalse(publisher.publish_angle(90))
+        self.assertFalse(publisher.publish_angle(90))
+        self.assertEqual(len(attempts), 1)
+
+        current_time[0] = 5.0
+        self.assertFalse(publisher.publish_angle(90))
+        self.assertEqual(len(attempts), 2)
+
 
 class MotorOverlayTests(unittest.TestCase):
     def test_formats_direction_angle_and_connection_state(self):
